@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StartL — Любовь на радарах большого города</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='white' stroke-width='6'/><circle cx='50' cy='50' r='8' fill='white'/></svg>">
+
+<!-- FONTS: Inter Tight (display) + Inter (body) + Playfair Display (editorial accent) + JetBrains Mono (labels) — all with Cyrillic -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@1,500;1,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- TAILWIND -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        ink:    '#060608',
+        panel:  '#0a0b0f',
+        paper:  '#f2f2ef',
+        mute:   '#8a8f9e',
+        accent: '#96a5ff',
+        champ:  '#d8c39a',
+        danger: '#ff4d5e'
+      },
+      fontFamily: {
+        display: ['"Inter Tight"', 'sans-serif'],
+        body:    ['Inter', 'sans-serif'],
+        serif:   ['"Playfair Display"', 'serif'],
+        mono:    ['"JetBrains Mono"', 'monospace']
+      }
+    }
+  }
+}
+</script>
+
+<!-- LENIS -->
+<script src="https://unpkg.com/lenis@1.3.25/dist/lenis.min.js"></script>
+
+<!-- GSAP + SCROLLTRIGGER -->
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+
+<!-- THREE.JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.158.0/three.min.js"></script>
+
+<style>
+/* ================= BASE ================= */
+body {
+  background: #060608;
+  color: #f2f2ef;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: #96a5ff; color: #060608; }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #060608; }
+::-webkit-scrollbar-thumb { background: #23252e; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #33363f; }
+
+/* static film grain, one cheap fixed layer */
+.grain::before {
+  content: ''; position: fixed; inset: 0; z-index: 80; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: .035;
+}
+
+/* ================= CURSOR ================= */
+@media (pointer: fine) {
+  body, a, button, input, select, textarea, label { cursor: none !important; }
+}
+#cur-dot, #cur-ring {
+  position: fixed; top: 0; left: 0; pointer-events: none; z-index: 9999;
+  will-change: transform;
+}
+#cur-dot {
+  width: 4px; height: 4px; margin: -2px 0 0 -2px;
+  border-radius: 50%; background: #f2f2ef;
+}
+#cur-ring { width: 0; height: 0; }
+#cur-ring .core {
+  position: absolute; top: 0; left: 0;
+  width: 28px; height: 28px; margin: -14px 0 0 -14px;
+  border: 1px solid rgba(242,242,239,.28);
+  border-radius: 50%;
+  transition: width .28s, height .28s, margin .28s, border-color .28s, transform .28s;
+}
+#cur-ring .t { display: none; position: absolute; background: #96a5ff; }
+#cur-ring.aim .core {
+  width: 46px; height: 46px; margin: -23px 0 0 -23px;
+  border-color: rgba(150,165,255,.7);
+}
+#cur-ring.aim .t { display: block; }
+#cur-ring.aim .t1 { top: -7px; left: 50%; width: 1px; height: 10px; transform: translateX(-50%); }
+#cur-ring.aim .t2 { bottom: -7px; left: 50%; width: 1px; height: 10px; transform: translateX(-50%); }
+#cur-ring.aim .t3 { left: -7px; top: 50%; width: 10px; height: 1px; transform: translateY(-50%); }
+#cur-ring.aim .t4 { right: -7px; top: 50%; width: 10px; height: 1px; transform: translateY(-50%); }
+#cur-ring.hover .core { transform: scale(1.45); border-color: rgba(242,242,239,.5); }
+@media (pointer: coarse) { #cur-dot, #cur-ring { display: none; } }
+
+/* ================= 3D CANVAS ================= */
+#gl {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none;
+}
+/* readability vignette above canvas, below content */
+.veil {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse 90% 70% at 50% 42%, transparent 40%, rgba(6,6,8,.72) 100%);
+}
+
+/* ================= TYPE / LINES ================= */
+.hairline   { border-color: rgba(242,242,239,.08); }
+.h-display  { font-family: 'Inter Tight', sans-serif; letter-spacing: -0.035em; }
+.serif-it   { font-family: 'Playfair Display', serif; font-style: italic; font-weight: 500; letter-spacing: -0.01em; }
+.lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; letter-spacing: .32em; text-transform: uppercase;
+  color: #8a8f9e;
+}
+.num { font-variant-numeric: tabular-nums; }
+
+/* ================= BUTTONS ================= */
+.btn-solid {
+  background: #f2f2ef; color: #060608;
+  transition: transform .35s cubic-bezier(.22,1,.36,1), box-shadow .35s, background .35s;
+}
+.btn-solid:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 50px -18px rgba(242,242,239,.35);
+  background: #ffffff;
+}
+.btn-line {
+  border: 1px solid rgba(242,242,239,.16); color: #8a8f9e;
+  transition: border-color .35s, color .35s, transform .35s cubic-bezier(.22,1,.36,1);
+}
+.btn-line:hover { border-color: rgba(242,242,239,.5); color: #f2f2ef; transform: translateY(-2px); }
+
+/* ================= MAP PANEL ================= */
+.panel {
+  background: rgba(10,11,15,.72);
+  border: 1px solid rgba(242,242,239,.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.map-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(242,242,239,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(242,242,239,.045) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+.dot {
+  position: absolute; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%; background: #cfd4e2;
+  transition: opacity .6s, transform .6s;
+}
+.dot.acc { background: #96a5ff; }
+.dot.dim { opacity: .1; transform: scale(.7); }
+.you {
+  position: absolute; left: 50%; top: 50%;
+  width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%; background: #f2f2ef;
+  box-shadow: 0 0 0 5px rgba(242,242,239,.07);
+  z-index: 5;
+}
+.you::after {
+  content: 'ВЫ'; position: absolute; top: -22px; left: 50%; transform: translateX(-50%);
+  font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: .25em; color: #8a8f9e;
+}
+#zone {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(242,242,239,.28);
+  background: radial-gradient(circle, rgba(150,165,255,.05) 0%, transparent 70%);
+  transition: width .9s cubic-bezier(.22,1,.36,1), height .9s cubic-bezier(.22,1,.36,1);
+}
+#zone::after {
+  content: ''; position: absolute; inset: -1px; border-radius: 50%;
+  border: 1px solid rgba(150,165,255,.25);
+  animation: zone-breathe 3.4s ease-in-out infinite;
+}
+@keyframes zone-breathe {
+  0%, 100% { transform: scale(1); opacity: .8; }
+  50% { transform: scale(1.02); opacity: .3; }
+}
+
+/* segmented control */
+.seg {
+  display: flex; gap: 4px; padding: 4px;
+  border: 1px solid rgba(242,242,239,.1); border-radius: 999px;
+  background: rgba(10,11,15,.7);
+}
+.seg button {
+  flex: 1; padding: 10px 0; border-radius: 999px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .18em;
+  color: #8a8f9e; transition: all .35s;
+}
+.seg button:hover { color: #f2f2ef; }
+.seg button.on { background: #f2f2ef; color: #060608; }
+
+/* ================= STEALTH ================= */
+.st-row {
+  border-top: 1px solid rgba(242,242,239,.08);
+  transition: background .45s, padding-left .45s;
+}
+.st-row:last-child { border-bottom: 1px solid rgba(242,242,239,.08); }
+.st-row .st-num, .st-row h3, .st-row p { transition: color .45s; }
+.st-row:hover { background: rgba(255,77,94,.04); padding-left: 14px; }
+.st-row:hover .st-num { color: #ff4d5e; }
+.st-row:hover h3 { color: #ff8c96; }
+
+/* ================= B2B ================= */
+.venue {
+  position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
+  transform: rotate(45deg);
+  background: rgba(216,195,154,.14);
+  border: 1px solid rgba(216,195,154,.45);
+  transition: all .5s; z-index: 4;
+}
+.venue.lit {
+  background: rgba(216,195,154,.9);
+  box-shadow: 0 0 18px rgba(216,195,154,.45);
+  transform: rotate(45deg) scale(1.35);
+}
+.venue .tip {
+  position: absolute; bottom: 20px; left: 50%;
+  transform: translateX(-50%) rotate(-45deg) translateY(4px);
+  transform-origin: center;
+  padding: 4px 9px; white-space: nowrap;
+  background: rgba(6,6,8,.92); border: 1px solid rgba(216,195,154,.35);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: .14em;
+  color: #d8c39a; opacity: 0; pointer-events: none;
+  transition: opacity .4s, transform .4s;
+}
+.venue.lit .tip { opacity: 1; transform: translateX(-50%) rotate(-45deg) translateY(0); }
+.mline {
+  position: absolute; height: 1px;
+  background: linear-gradient(90deg, rgba(207,212,226,.7), rgba(216,195,154,.9));
+  transform-origin: left center;
+  opacity: 0; transition: opacity .5s; z-index: 3;
+}
+.mline.on { opacity: 1; }
+.pdot {
+  position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  border-radius: 50%; z-index: 4;
+  transition: opacity .4s;
+}
+
+/* ================= FORM ================= */
+.f-input {
+  width: 100%; background: transparent;
+  border: 0; border-bottom: 1px solid rgba(242,242,239,.14);
+  padding: 14px 2px; color: #f2f2ef;
+  transition: border-color .35s;
+}
+.f-input:focus { outline: none; border-color: #96a5ff; }
+.f-input::placeholder { color: #4d5160; }
+select.f-input option { background: #0a0b0f; color: #f2f2ef; }
+
+/* fallback so content never hides if GSAP fails */
+[data-reveal], [data-hero] { opacity: 1; }
+</style>
+</head>
+
+<body class="grain">
+
+<!-- 3D background + vignette -->
+<canvas id="gl"></canvas>
+<div class="veil"></div>
+
+<!-- cursor -->
+<div id="cur-ring"><div class="core"><span class="t t1"></span><span class="t t2"></span><span class="t t3"></span><span class="t t4"></span></div></div>
+<div id="cur-dot"></div>
+
+<!-- ================= NAV ================= -->
+<header class="fixed inset-x-0 top-0 z-50 border-b hairline bg-ink/55 backdrop-blur-md">
+  <nav class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+    <a href="#hero" data-scroll class="h-display text-[17px] font-600 tracking-tight text-paper">StartL<span class="text-accent">.</span></a>
+    <div class="hidden items-center gap-10 md:flex">
+      <a href="#map" data-scroll class="lbl transition-colors hover:text-paper">Карта</a>
+      <a href="#stealth" data-scroll class="lbl transition-colors hover:text-paper">Приватность</a>
+      <a href="#b2b" data-scroll class="lbl transition-colors hover:text-paper">Партнёрам</a>
+      <a href="#invest" data-scroll class="lbl transition-colors hover:text-paper">Инвесторам</a>
+    </div>
+    <a href="#invest" data-scroll class="btn-solid rounded-full px-6 py-2.5 font-mono text-[10px] font-500 uppercase tracking-[.2em]">Whitepaper</a>
+  </nav>
+</header>
+
+<!-- ================= HERO ================= -->
+<section id="hero" class="relative z-10 flex min-h-screen items-center justify-center px-6 pt-24">
+  <div class="mx-auto max-w-5xl text-center">
+    <div data-hero class="lbl mb-10">Mobile dating · Geo network · 2026</div>
+
+    <h1 data-hero class="h-display text-[11vw] font-600 leading-[1.02] text-paper sm:text-7xl lg:text-[92px]">
+      StartL. <span class="serif-it text-accent">Любовь</span> на радарах<br class="hidden sm:block">
+      большого города
+    </h1>
+
+    <p data-hero class="mx-auto mt-10 max-w-xl text-[17px] leading-relaxed text-mute">
+      Дейтинг нового поколения: живая карта города вместо свайпов,
+      анонимный старт диалога и встречи в проверенных местах.
+    </p>
+
+    <div data-hero class="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row">
+      <a href="#invest" data-scroll class="btn-solid rounded-full px-9 py-4 font-mono text-[11px] font-500 uppercase tracking-[.22em]">Скачать Whitepaper</a>
+      <a href="#map" data-scroll class="btn-line rounded-full px-9 py-4 font-mono text-[11px] uppercase tracking-[.22em]">Демо карты</a>
+    </div>
+
+    <div data-hero class="mx-auto mt-24 grid max-w-2xl grid-cols-3 divide-x hairline border-t hairline pt-0">
+      <div class="pt-8">
+        <div class="h-display num text-3xl font-600 text-paper">0</div>
+        <div class="lbl mt-2 !text-[9px]">свайпов</div>
+      </div>
+      <div class="pt-8">
+        <div class="h-display num text-3xl font-600 text-paper">50 м</div>
+        <div class="lbl mt-2 !text-[9px]">бесплатный радиус</div>
+      </div>
+      <div class="pt-8">
+        <div class="h-display num text-3xl font-600 text-paper">+340%</div>
+        <div class="lbl mt-2 !text-[9px]">трафик партнёров</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 01 / MAP ================= -->
+<section id="map" class="relative z-10 mx-auto max-w-6xl px-6 py-36">
+  <div data-reveal class="mb-20 flex items-end justify-between border-b hairline pb-8">
+    <div>
+      <div class="lbl mb-5">01 — Live-карта</div>
+      <h2 class="h-display max-w-xl text-4xl font-600 leading-tight text-paper sm:text-5xl">
+        Город — это <span class="serif-it text-accent">интерфейс</span>
+      </h2>
+    </div>
+    <div class="hidden max-w-xs text-sm leading-relaxed text-mute lg:block">
+      Люди видят друг друга только на карте, в реальном времени.
+      Подписка «Радиус» расширяет зону сигнала.
+    </div>
+  </div>
+
+  <div class="grid items-start gap-14 lg:grid-cols-[1.1fr_.9fr]">
+    <!-- map panel -->
+    <div data-reveal class="panel relative aspect-square overflow-hidden rounded-2xl">
+      <div class="map-grid"></div>
+      <div id="zone" style="width:20%;height:20%"></div>
+      <div class="you"></div>
+      <div id="dots" class="absolute inset-0"></div>
+      <div class="absolute left-5 top-5 flex items-center gap-3">
+        <span class="h-1.5 w-1.5 rounded-full bg-accent"></span>
+        <span class="lbl !text-[9px]">Live · Москва</span>
+      </div>
+      <div class="absolute bottom-5 left-5 font-mono text-[11px] tracking-[.14em] text-mute">
+        в зоне сигнала — <span id="cnt" class="num text-paper">0</span>
+      </div>
+      <div class="absolute bottom-5 right-5 font-mono text-[11px] tracking-[.14em] text-mute">
+        <span id="rad" class="num text-paper">50 м</span>
+      </div>
+    </div>
+
+    <!-- tiers -->
+    <div class="lg:pt-4">
+      <div data-reveal class="seg" role="tablist">
+        <button data-tier="free" class="on">50 м</button>
+        <button data-tier="gold">1 км</button>
+        <button data-tier="cyber">10 км</button>
+      </div>
+
+      <div data-reveal class="mt-10 border-b hairline pb-8">
+        <div class="flex items-baseline justify-between">
+          <div class="h-display text-2xl font-600 text-paper" id="tier-name">Free</div>
+          <div class="h-display num text-2xl font-500 text-paper" id="tier-price">0 ₽</div>
+        </div>
+        <p class="mt-4 text-[15px] leading-relaxed text-mute" id="tier-desc">
+          Радиус 50 метров: твой вагон метро, твоя кофейня, твоя очередь.
+          Достаточно, чтобы игра началась.
+        </p>
+      </div>
+
+      <div data-reveal class="mt-8 space-y-4 text-sm text-mute">
+        <div class="flex justify-between border-b hairline pb-4">
+          <span>Формат</span><span class="text-paper">Только живая карта</span>
+        </div>
+        <div class="flex justify-between border-b hairline pb-4">
+          <span>Анкеты и свайпы</span><span class="text-paper">Отсутствуют</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Апгрейд радиуса</span><span class="text-paper">Gold · Cyber</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 02 / STEALTH ================= -->
+<section id="stealth" class="relative z-10 mx-auto max-w-6xl px-6 py-36">
+  <div data-reveal class="mb-16">
+    <div class="lbl mb-5">02 — Приватность</div>
+    <h2 class="h-display max-w-2xl text-4xl font-600 leading-tight text-paper sm:text-5xl">
+      Стелс <span class="serif-it text-mute">по умолчанию</span>
+    </h2>
+  </div>
+
+  <div data-reveal>
+    <div class="st-row grid gap-3 py-9 md:grid-cols-[80px_1fr_1.2fr] md:items-baseline">
+      <div class="st-num font-mono text-xs text-mute">/01</div>
+      <h3 class="h-display text-xl font-600 text-paper">Анонимный коннект</h3>
+      <p class="text-[15px] leading-relaxed text-mute">Диалог начинается по геоточке — без имён, фото и соцсетей. Личность раскрывается только после взаимного интереса.</p>
+    </div>
+    <div class="st-row grid gap-3 py-9 md:grid-cols-[80px_1fr_1.2fr] md:items-baseline">
+      <div class="st-num font-mono text-xs text-mute">/02</div>
+      <h3 class="h-display text-xl font-600 text-paper">Режим невидимки</h3>
+      <p class="text-[15px] leading-relaxed text-mute">Один клик — и ты исчезаешь с карты, продолжая видеть остальных. Наблюдай из тени, возвращайся когда захочешь.</p>
+    </div>
+    <div class="st-row grid gap-3 py-9 md:grid-cols-[80px_1fr_1.2fr] md:items-baseline">
+      <div class="st-num font-mono text-xs text-mute">/03</div>
+      <h3 class="h-display text-xl font-600 text-paper">Мгновенный бан</h3>
+      <p class="text-[15px] leading-relaxed text-mute">Навязчивый пользователь исчезает навсегда одним касанием. AI-щит закрывает тебя от него на всех уровнях системы.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 03 / B2B ================= -->
+<section id="b2b" class="relative z-10 mx-auto max-w-6xl px-6 py-36">
+  <div data-reveal class="mb-20 flex items-end justify-between border-b hairline pb-8">
+    <div>
+      <div class="lbl mb-5" style="color:#d8c39a">03 — Партнёрам</div>
+      <h2 class="h-display max-w-xl text-4xl font-600 leading-tight text-paper sm:text-5xl">
+        Свидания приносят <span class="serif-it" style="color:#d8c39a">выручку</span>
+      </h2>
+    </div>
+    <div class="hidden max-w-xs text-sm leading-relaxed text-mute lg:block">
+      При взаимном коннекте пара получает «безопасную зону встречи» —
+      партнёрское заведение со скидкой.
+    </div>
+  </div>
+
+  <div class="grid items-start gap-14 lg:grid-cols-[.9fr_1.1fr]">
+    <!-- metrics -->
+    <div class="space-y-12 lg:pt-2">
+      <div data-reveal>
+        <div class="h-display num text-7xl font-600 leading-none text-paper sm:text-8xl">
+          +<span class="counter" data-count="340">0</span><span style="color:#d8c39a">%</span>
+        </div>
+        <div class="lbl mt-4">прирост гостей заведения · квартал</div>
+      </div>
+
+      <div data-reveal class="grid grid-cols-2 gap-10 border-t hairline pt-10">
+        <div>
+          <div class="h-display num text-4xl font-600 text-paper"><span class="counter" data-count="4200">0</span></div>
+          <div class="lbl mt-3 !text-[9px]">свиданий в месяц</div>
+        </div>
+        <div>
+          <div class="h-display num text-4xl font-600 text-paper"><span class="counter" data-count="18">0</span>%</div>
+          <div class="lbl mt-3 !text-[9px]">комиссия с чека</div>
+        </div>
+      </div>
+
+      <div data-reveal class="border-t hairline pt-10">
+        <p class="max-w-md text-[15px] leading-relaxed text-mute">
+          Взаимный коннект → пара выбирает свидание → система подсвечивает
+          заведение как безопасную зону → пара приходит по скидке.
+          Оплата — только за реально пришедших гостей.
+        </p>
+        <a href="#invest" data-scroll class="btn-line mt-8 inline-block rounded-full px-8 py-3.5 font-mono text-[10px] uppercase tracking-[.22em]" style="color:#d8c39a;border-color:rgba(216,195,154,.35)">
+          Стать партнёром
+        </a>
+      </div>
+    </div>
+
+    <!-- b2b map -->
+    <div data-reveal class="panel relative aspect-square overflow-hidden rounded-2xl">
+      <div class="map-grid"></div>
+      <div class="venue" style="left:30%;top:34%" data-venue><span class="tip">SAFE ZONE · −20%</span></div>
+      <div class="venue" style="left:68%;top:26%" data-venue><span class="tip">SAFE ZONE · −15%</span></div>
+      <div class="venue" style="left:56%;top:64%" data-venue><span class="tip">SAFE ZONE · −25%</span></div>
+      <div class="venue" style="left:22%;top:72%" data-venue><span class="tip">SAFE ZONE · −10%</span></div>
+      <div id="b2b-layer" class="absolute inset-0"></div>
+      <div class="absolute left-5 top-5 flex items-center gap-3">
+        <span class="h-1.5 w-1.5 rounded-full" style="background:#d8c39a"></span>
+        <span class="lbl !text-[9px]">Match-поток</span>
+      </div>
+      <div class="absolute bottom-5 left-5 font-mono text-[11px] tracking-[.14em] text-mute">
+        свиданий сегодня — <span id="dates" class="num text-paper">0</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 / INVEST ================= -->
+<section id="invest" class="relative z-10 mx-auto max-w-6xl px-6 py-36">
+  <div class="grid gap-16 lg:grid-cols-[1fr_1.1fr]">
+    <div data-reveal>
+      <div class="lbl mb-5">04 — Доступ</div>
+      <h2 class="h-display text-4xl font-600 leading-tight text-paper sm:text-5xl">
+        Раннее окно <span class="serif-it text-accent">входа</span>
+      </h2>
+      <p class="mt-8 max-w-md text-[15px] leading-relaxed text-mute">
+        Оставьте контакт — отправим whitepaper, финансовую модель
+        и доступ к закрытой бете StartL. Отвечаем в течение суток.
+      </p>
+      <div class="lbl mt-12 !text-[9px]">seed-раунд открыт · Q3 2026</div>
+    </div>
+
+    <form id="invest-form" data-aim data-reveal class="lg:pt-2">
+      <div class="grid gap-8 sm:grid-cols-2">
+        <div>
+          <label for="f-name" class="lbl mb-2 block !text-[9px]">Имя</label>
+          <input id="f-name" type="text" required placeholder="Александра" class="f-input">
+        </div>
+        <div>
+          <label for="f-email" class="lbl mb-2 block !text-[9px]">Email</label>
+          <input id="f-email" type="email" required placeholder="you@fund.vc" class="f-input">
+        </div>
+      </div>
+      <div class="mt-8">
+        <label for="f-role" class="lbl mb-2 block !text-[9px]">Роль</label>
+        <select id="f-role" class="f-input">
+          <option value="investor">Инвестор — deck и финмодель</option>
+          <option value="partner">Заведение — партнёрская программа</option>
+          <option value="tester">Ранний тестировщик — бета</option>
+        </select>
+      </div>
+      <button type="submit" class="btn-solid mt-12 w-full rounded-full py-4 font-mono text-[11px] font-500 uppercase tracking-[.24em]">
+        Отправить
+      </button>
+      <div id="form-ok" class="mt-6 hidden border-t pt-5 font-mono text-xs tracking-[.12em] text-accent" style="border-color:rgba(150,165,255,.3)">
+        Сигнал принят — ответим в течение 24 часов.
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ================= FOOTER ================= -->
+<footer class="relative z-10 border-t hairline">
+  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-6 py-10 md:flex-row">
+    <div class="h-display text-[15px] font-600 text-paper">StartL<span class="text-accent">.</span></div>
+    <div class="lbl !text-[9px]">© 2026 StartL Labs — сигнал активен в 3 городах</div>
+    <div class="flex gap-8">
+      <a href="#" class="lbl !text-[9px] transition-colors hover:text-paper">Telegram</a>
+      <a href="#" class="lbl !text-[9px] transition-colors hover:text-paper">X</a>
+      <a href="#" class="lbl !text-[9px] transition-colors hover:text-paper">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ================================================================
+   STARTL v2 — minimal / three.js edition
+   ================================================================ */
+(function () {
+  'use strict';
+
+  var reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- 1. THREE.JS — particle city-sphere ---------- */
+  var tint = { current: null, target: null };
+  if (window.THREE) {
+    var canvas = document.getElementById('gl');
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.8));
+    renderer.setSize(innerWidth, innerHeight);
+
+    var scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x060608, 0.03);
+
+    var camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
+    camera.position.set(0, 0, 26);
+
+    var group = new THREE.Group();
+    scene.add(group);
+
+    /* fibonacci sphere of points */
+    var COUNT = 2600, R = 10;
+    var GA = Math.PI * (3 - Math.sqrt(5));
+    var pos = new Float32Array(COUNT * 3);
+    var col = new Float32Array(COUNT * 3);
+    var pts3 = [];
+
+    for (var i = 0; i < COUNT; i++) {
+      var y = 1 - (i / (COUNT - 1)) * 2;
+      var r = Math.sqrt(1 - y * y);
+      var th = GA * i;
+      var x = Math.cos(th) * r, z = Math.sin(th) * r;
+      /* slight radial jitter so it feels organic, not CG-perfect */
+      var rr = R * (0.98 + Math.random() * 0.05);
+      pos[i * 3] = x * rr; pos[i * 3 + 1] = y * rr; pos[i * 3 + 2] = z * rr;
+      pts3.push(new THREE.Vector3(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]));
+      /* grayscale brightness only — hue comes from mat.color (section tint) */
+      var f = Math.random() < 0.07 ? 1.6 : 0.5 + Math.random() * 0.5;
+      col[i * 3] = f; col[i * 3 + 1] = f; col[i * 3 + 2] = f;
+    }
+
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
+    var mat = new THREE.PointsMaterial({
+      size: 0.07, vertexColors: true, transparent: true,
+      opacity: 0.85, depthWrite: false,
+      blending: THREE.AdditiveBlending, sizeAttenuation: true
+    });
+    group.add(new THREE.Points(geo, mat));
+
+    /* sparse connections between neighbouring points */
+    var linePos = [];
+    for (var a = 0; a < COUNT; a += 9) {
+      for (var b = a + 1; b < Math.min(a + 40, COUNT); b += 7) {
+        if (pts3[a].distanceTo(pts3[b]) < 1.9 && linePos.length < 260 * 6) {
+          linePos.push(pts3[a].x, pts3[a].y, pts3[a].z, pts3[b].x, pts3[b].y, pts3[b].z);
+        }
+      }
+    }
+    var lgeo = new THREE.BufferGeometry();
+    lgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(linePos), 3));
+    var lmat = new THREE.LineBasicMaterial({
+      color: 0x96a5ff, transparent: true, opacity: 0.07,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    group.add(new THREE.LineSegments(lgeo, lmat));
+
+    /* a single thin equatorial ring — the only "orbit" allowed */
+    var ringGeo = new THREE.RingGeometry(13.2, 13.24, 128);
+    var ringMat = new THREE.MeshBasicMaterial({
+      color: 0x8a8f9e, side: THREE.DoubleSide,
+      transparent: true, opacity: 0.16, depthWrite: false
+    });
+    var ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = Math.PI / 2.25;
+    group.add(ring);
+
+    /* tint targets per section */
+    tint.current = new THREE.Color(0x9aa3bd);
+    tint.target = new THREE.Color(0x9aa3bd);
+    var TINTS = {
+      hero:    0x9aa3bd,
+      map:     0x96a5ff,
+      stealth: 0x565b6b,
+      b2b:     0xd8c39a,
+      invest:  0x96a5ff
+    };
+    window.__setTint = function (name) {
+      if (TINTS[name] !== undefined) tint.target.setHex(TINTS[name]);
+    };
+
+    var mouse = { x: 0, y: 0 };
+    if (!reduceMotion) {
+      addEventListener('mousemove', function (e) {
+        mouse.x = (e.clientX / innerWidth - 0.5) * 2;
+        mouse.y = (e.clientY / innerHeight - 0.5) * 2;
+      });
+    }
+
+    addEventListener('resize', function () {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    var clock = new THREE.Clock();
+    (function render() {
+      requestAnimationFrame(render);
+      var t = clock.getElapsedTime();
+
+      group.rotation.y += 0.0009;
+      group.rotation.x += ((mouse.y * 0.12) - group.rotation.x) * 0.03;
+      group.rotation.z += ((mouse.x * 0.05) - group.rotation.z) * 0.03;
+      group.position.y = Math.sin(t * 0.4) * 0.25;
+
+      /* gentle camera dolly across the whole page */
+      var doc = document.documentElement;
+      var p = doc.scrollHeight > innerHeight ? (scrollY / (doc.scrollHeight - innerHeight)) : 0;
+      camera.position.z = 26 - p * 5;
+      camera.position.y = -p * 2.4;
+
+      /* section tint: material color multiplies vertex colors */
+      tint.current.lerp(tint.target, 0.04);
+      mat.color.copy(tint.current).multiplyScalar(1.35);
+      lmat.color.copy(tint.current);
+      ringMat.color.copy(tint.current);
+
+      renderer.render(scene, camera);
+    })();
+  }
+
+  /* ---------- 2. LENIS ---------- */
+  var lenis = null;
+  if (window.Lenis && !reduceMotion) {
+    lenis = new Lenis({ lerp: 0.09, smoothWheel: true });
+    if (window.gsap && window.ScrollTrigger) {
+      lenis.on('scroll', ScrollTrigger.update);
+      gsap.ticker.add(function (time) { lenis.raf(time * 1000); });
+      gsap.ticker.lagSmoothing(0);
+    } else {
+      (function raf(t) { lenis.raf(t); requestAnimationFrame(raf); })(0);
+    }
+  }
+
+  document.querySelectorAll('[data-scroll]').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      var id = link.getAttribute('href');
+      if (!id || id.charAt(0) !== '#') return;
+      var target = document.querySelector(id);
+      if (!target) return;
+      e.preventDefault();
+      if (lenis) lenis.scrollTo(target, { offset: -60, duration: 1.3 });
+      else target.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  /* ---------- 3. CURSOR ---------- */
+  if (matchMedia('(pointer: fine)').matches) {
+    var ringEl = document.getElementById('cur-ring');
+    var dotEl = document.getElementById('cur-dot');
+    var mx = innerWidth / 2, my = innerHeight / 2, rx = mx, ry = my;
+
+    addEventListener('mousemove', function (e) { mx = e.clientX; my = e.clientY; });
+    (function loop() {
+      rx += (mx - rx) * 0.16; ry += (my - ry) * 0.16;
+      ringEl.style.transform = 'translate(' + rx + 'px,' + ry + 'px)';
+      dotEl.style.transform = 'translate(' + mx + 'px,' + my + 'px)';
+      requestAnimationFrame(loop);
+    })();
+
+    document.querySelectorAll('a, button, .seg button').forEach(function (el) {
+      el.addEventListener('mouseenter', function () { ringEl.classList.add('hover'); });
+      el.addEventListener('mouseleave', function () { ringEl.classList.remove('hover'); });
+    });
+    document.querySelectorAll('[data-aim], [data-aim] input, [data-aim] select, [data-aim] button').forEach(function (el) {
+      el.addEventListener('mouseenter', function () { ringEl.classList.add('aim'); });
+      el.addEventListener('mouseleave', function () { ringEl.classList.remove('aim'); });
+    });
+  }
+
+  /* ---------- 4. LIVE MAP ---------- */
+  var dotsWrap = document.getElementById('dots');
+  var zone = document.getElementById('zone');
+  var cnt = document.getElementById('cnt');
+  var rad = document.getElementById('rad');
+
+  var TIERS = {
+    free:  { frac: 0.20, label: '50 м',  name: 'Free',  price: '0 ₽',
+             desc: 'Радиус 50 метров: твой вагон метро, твоя кофейня, твоя очередь. Достаточно, чтобы игра началась.' },
+    gold:  { frac: 0.52, label: '1 км',  name: 'Gold',  price: '499 ₽ / мес',
+             desc: 'Весь район на ладони: парки, бары, коворкинги. Плюс приоритет сигнала — тебя замечают первым.' },
+    cyber: { frac: 0.92, label: '10 км', name: 'Cyber', price: '999 ₽ / мес',
+             desc: 'Максимальный охват мегаполиса, безлимит коннектов и режим невидимки в подарок.' }
+  };
+
+  var seed = 42;
+  function rand() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+
+  var userDots = [];
+  for (var d = 0; d < 22; d++) {
+    var ang = rand() * Math.PI * 2;
+    var dist = 0.12 + rand() * 0.84;
+    var el = document.createElement('div');
+    el.className = 'dot' + (d % 6 === 0 ? ' acc' : '');
+    el.style.left = (50 + Math.cos(ang) * dist * 46) + '%';
+    el.style.top = (50 + Math.sin(ang) * dist * 46) + '%';
+    dotsWrap.appendChild(el);
+    userDots.push({ el: el, dist: dist });
+  }
+
+  function applyTier(name) {
+    var t = TIERS[name];
+    zone.style.width = (t.frac * 100) + '%';
+    zone.style.height = (t.frac * 100) + '%';
+    rad.textContent = t.label;
+    document.getElementById('tier-name').textContent = t.name;
+    document.getElementById('tier-price').textContent = t.price;
+    document.getElementById('tier-desc').textContent = t.desc;
+
+    var visible = 0;
+    userDots.forEach(function (u) {
+      var inside = u.dist * 46 <= t.frac * 50;
+      u.el.classList.toggle('dim', !inside);
+      if (inside) visible++;
+    });
+
+    var from = parseInt(cnt.textContent, 10) || 0;
+    if (window.gsap) {
+      var o = { v: from };
+      gsap.to(o, { v: visible, duration: .6, ease: 'power2.out', onUpdate: function () { cnt.textContent = Math.round(o.v); } });
+    } else cnt.textContent = visible;
+
+    document.querySelectorAll('.seg button').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.tier === name);
+    });
+  }
+
+  document.querySelectorAll('.seg button').forEach(function (b) {
+    b.addEventListener('click', function () { applyTier(b.dataset.tier); });
+  });
+  applyTier('free');
+
+  /* ---------- 5. B2B MATCH FLOW ---------- */
+  var b2bLayer = document.getElementById('b2b-layer');
+  var venues = Array.prototype.slice.call(document.querySelectorAll('[data-venue]'));
+  var dates = document.getElementById('dates');
+  var datesTotal = 0;
+
+  function spawnMatch() {
+    if (document.hidden) return;
+    var venue = venues[Math.floor(Math.random() * venues.length)];
+    var vx = parseFloat(venue.style.left), vy = parseFloat(venue.style.top);
+    var mapEl = b2bLayer.parentElement;
+    var w = mapEl.clientWidth, h = mapEl.clientHeight;
+    if (!w) return;
+
+    var nodes = [];
+    var pts = [];
+    for (var k = 0; k < 2; k++) {
+      var px = Math.max(8, Math.min(92, vx + (Math.random() * 34 - 17)));
+      var py = Math.max(8, Math.min(92, vy + (Math.random() * 34 - 17)));
+      pts.push({ x: px, y: py });
+      var p = document.createElement('div');
+      p.className = 'pdot';
+      p.style.left = px + '%'; p.style.top = py + '%';
+      p.style.background = k === 0 ? '#cfd4e2' : '#96a5ff';
+      p.style.opacity = '0';
+      b2bLayer.appendChild(p); nodes.push(p);
+    }
+    pts.forEach(function (p) {
+      var x1 = p.x / 100 * w, y1 = p.y / 100 * h;
+      var x2 = vx / 100 * w, y2 = vy / 100 * h;
+      var line = document.createElement('div');
+      line.className = 'mline';
+      line.style.left = x1 + 'px'; line.style.top = y1 + 'px';
+      line.style.width = Math.hypot(x2 - x1, y2 - y1) + 'px';
+      line.style.transform = 'rotate(' + (Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI) + 'deg)';
+      b2bLayer.appendChild(line); nodes.push(line);
+    });
+
+    requestAnimationFrame(function () {
+      nodes.forEach(function (n) { n.style.opacity = ''; n.classList.add('on'); });
+      venue.classList.add('lit');
+    });
+
+    dates.textContent = ++datesTotal;
+
+    setTimeout(function () {
+      venue.classList.remove('lit');
+      nodes.forEach(function (n) { n.style.opacity = '0'; n.classList.remove('on'); });
+      setTimeout(function () { nodes.forEach(function (n) { n.remove(); }); }, 550);
+    }, 2400);
+  }
+  setTimeout(spawnMatch, 1600);
+  setInterval(spawnMatch, 3600);
+
+  /* ---------- 6. COUNTERS ---------- */
+  function runCounter(el) {
+    var target = parseInt(el.dataset.count, 10);
+    var start = performance.now(), dur = 1600;
+    (function frame(now) {
+      var p = Math.min((now - start) / dur, 1);
+      var eased = 1 - Math.pow(1 - p, 4);
+      var val = Math.round(target * eased);
+      el.textContent = val >= 1000 ? val.toLocaleString('ru-RU') : val;
+      if (p < 1) requestAnimationFrame(frame);
+    })(start);
+  }
+  var counters = Array.prototype.slice.call(document.querySelectorAll('.counter'));
+
+  /* ---------- 7. GSAP REVEALS + SECTION TINTS ---------- */
+  if (window.gsap && window.ScrollTrigger) {
+    gsap.registerPlugin(ScrollTrigger);
+
+    gsap.utils.toArray('[data-hero]').forEach(function (el, i) {
+      gsap.from(el, { y: 26, opacity: 0, duration: 1.1, delay: 0.15 + i * 0.1, ease: 'power3.out' });
+    });
+
+    gsap.utils.toArray('[data-reveal]').forEach(function (el) {
+      gsap.from(el, {
+        y: 34, opacity: 0, duration: 1.05, ease: 'power3.out',
+        scrollTrigger: { trigger: el, start: 'top 88%', once: true }
+      });
+    });
+
+    counters.forEach(function (el) {
+      ScrollTrigger.create({ trigger: el, start: 'top 86%', once: true, onEnter: function () { runCounter(el); } });
+    });
+
+    ['hero', 'map', 'stealth', 'b2b', 'invest'].forEach(function (id) {
+      ScrollTrigger.create({
+        trigger: '#' + id, start: 'top 55%', end: 'bottom 55%',
+        onEnter: function () { if (window.__setTint) __setTint(id); },
+        onEnterBack: function () { if (window.__setTint) __setTint(id); }
+      });
+    });
+  } else {
+    counters.forEach(runCounter);
+  }
+
+  /* ---------- 8. FORM ---------- */
+  document.getElementById('invest-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = this.querySelector('button[type="submit"]');
+    var ok = document.getElementById('form-ok');
+    btn.textContent = 'Передача…'; btn.disabled = true;
+    setTimeout(function () {
+      btn.textContent = 'Отправлено';
+      ok.classList.remove('hidden');
+      if (window.gsap) gsap.from(ok, { y: 10, opacity: 0, duration: .6, ease: 'power2.out' });
+    }, 900);
+  });
+
+})();
+</script>
+</body>
+</html>
