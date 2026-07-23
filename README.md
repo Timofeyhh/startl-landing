@@ -6,7 +6,7 @@
 
 **Live demo → [timofeyhh.github.io/startl-landing](https://timofeyhh.github.io/startl-landing/)**
 
-![Hero](screenshots/startl-hero.png)
+![Hero](startl-hero.png)
 
 ## Концепция продукта
 
@@ -30,11 +30,11 @@ StartL — дейтинг нового поколения без свайпов:
 
 | Live-карта (тариф Gold) | Стелс-протокол |
 |---|---|
-| ![Map](screenshots/startl-map-gold.png) | ![Stealth](screenshots/startl-stealth.png) |
+| ![Map](startl-map-gold.png) | ![Stealth](startl-stealth.png) |
 
 | Партнёрская секция | Форма для инвесторов |
 |---|---|
-| ![B2B](screenshots/startl-b2b.png) | ![Invest](screenshots/startl-invest.png) |
+| ![B2B](startl-b2b.png) | ![Invest](startl-invest.png) |
 
 ## Запуск
 
